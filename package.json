@@ -1,0 +1,47 @@
+{
+  "name": "@ryanbrandt/todoist-clone",
+  "version": "0.1.0",
+  "description": "Open-source Todoist clone with MCP integration for Claude Code sessions",
+  "type": "module",
+  "main": "dist/mcp-stdio.js",
+  "bin": {
+    "todoistclone": "./dist/mcp-stdio.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/mcp-stdio.js",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "todoist",
+    "mcp",
+    "claude",
+    "task-management",
+    "productivity"
+  ],
+  "author": "Ryan Brandt",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "better-sqlite3": "^11.0.0",
+    "chrono-node": "^2.7.0",
+    "kysely": "^0.27.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
