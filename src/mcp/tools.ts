@@ -4,6 +4,7 @@ import type { Database, TaskWithLabels, Project, Label } from '../types/database
 import { TaskService } from '../services/tasks.js';
 import { ProjectService } from '../services/projects.js';
 import { LabelService } from '../services/labels.js';
+import { TodoScanner, type FoundTodo } from '../services/todos.js';
 
 // Input schemas
 export const createTaskSchema = z.object({
@@ -47,6 +48,12 @@ export const createProjectSchema = z.object({
 export const createLabelSchema = z.object({
   name: z.string().describe('Label name'),
   color: z.string().optional().describe('Label color'),
+});
+
+export const scanTodosSchema = z.object({
+  directory: z.string().optional().describe('Directory to scan (defaults to current working directory)'),
+  createTasks: z.boolean().optional().default(false).describe('Create tasks from found TODOs'),
+  project: z.string().optional().describe('Project for created tasks (defaults to Inbox)'),
 });
 
 // Tool definitions
@@ -188,6 +195,18 @@ export function getToolDefinitions() {
         required: ['name'],
       },
     },
+    {
+      name: 'scan_todos',
+      description: 'Scan codebase for TODO, FIXME, HACK, and XXX comments. Optionally create tasks from them.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          directory: { type: 'string', description: 'Directory to scan (defaults to current working directory)' },
+          createTasks: { type: 'boolean', description: 'Create tasks from found TODOs' },
+          project: { type: 'string', description: 'Project for created tasks (defaults to Inbox)' },
+        },
+      },
+    },
   ];
 }
 
@@ -196,11 +215,13 @@ export class ToolHandlers {
   private taskService: TaskService;
   private projectService: ProjectService;
   private labelService: LabelService;
+  private todoScanner: TodoScanner;
 
   constructor(db: Kysely<Database>) {
     this.taskService = new TaskService(db);
     this.projectService = new ProjectService(db);
     this.labelService = new LabelService(db);
+    this.todoScanner = new TodoScanner();
   }
 
   async handleTool(name: string, args: Record<string, unknown>): Promise<string> {
@@ -229,6 +250,8 @@ export class ToolHandlers {
         return this.listLabels();
       case 'create_label':
         return this.createLabel(args);
+      case 'scan_todos':
+        return this.scanTodos(args);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -368,6 +391,63 @@ export class ToolHandlers {
     const input = createLabelSchema.parse(args);
     const label = await this.labelService.create(input);
     return `Created label: ${this.formatLabel(label)}`;
+  }
+
+  private async scanTodos(args: Record<string, unknown>): Promise<string> {
+    const input = scanTodosSchema.parse(args);
+    const directory = input.directory || process.cwd();
+
+    const todos = await this.todoScanner.scan(directory);
+
+    if (todos.length === 0) {
+      return 'No TODOs found in codebase.';
+    }
+
+    // Group by type
+    const grouped: Record<string, FoundTodo[]> = {};
+    for (const todo of todos) {
+      if (!grouped[todo.type]) grouped[todo.type] = [];
+      grouped[todo.type].push(todo);
+    }
+
+    // If createTasks is true, create tasks from the TODOs
+    if (input.createTasks) {
+      let projectId: string | undefined;
+      if (input.project) {
+        const project = await this.findProject(input.project);
+        projectId = project?.id;
+      }
+
+      let created = 0;
+      for (const todo of todos) {
+        await this.taskService.create({
+          content: `[${todo.type}] ${todo.content}`,
+          description: `${todo.file}:${todo.line}`,
+          projectId,
+          priority: todo.type === 'FIXME' ? 2 : todo.type === 'HACK' ? 3 : undefined,
+        });
+        created++;
+      }
+
+      return `Found ${todos.length} TODOs. Created ${created} tasks.\n\n${this.formatTodoList(grouped)}`;
+    }
+
+    return `Found ${todos.length} TODOs:\n\n${this.formatTodoList(grouped)}`;
+  }
+
+  private formatTodoList(grouped: Record<string, FoundTodo[]>): string {
+    const parts: string[] = [];
+
+    for (const [type, todos] of Object.entries(grouped)) {
+      parts.push(`${type} (${todos.length}):`);
+      for (const todo of todos) {
+        parts.push(`  - ${todo.content}`);
+        parts.push(`    ${todo.file}:${todo.line}`);
+      }
+      parts.push('');
+    }
+
+    return parts.join('\n');
   }
 
   private async findProject(nameOrId: string): Promise<Project | undefined> {

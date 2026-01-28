@@ -56,10 +56,23 @@ Just talk:
 | `delete_task` | Remove |
 | `today` | Due today + overdue |
 | `upcoming` | Next N days |
+| `scan_todos` | Find TODO/FIXME/HACK comments in codebase |
 | `list_projects` | All projects |
 | `create_project` | New project |
 | `list_labels` | All labels |
 | `create_label` | New label |
+
+## Scan TODOs
+
+Find all TODO comments in your codebase:
+
+```
+"scan this repo for TODOs"
+"find all FIXMEs in the codebase"
+"scan for TODOs and create tasks from them"
+```
+
+Creates tasks with file:line references so you can jump right to them.
 
 ## Custom Database Location
 
