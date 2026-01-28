@@ -6,6 +6,7 @@ import { TaskService } from '../services/tasks.js';
 import { ProjectService } from '../services/projects.js';
 import { LabelService } from '../services/labels.js';
 import * as migration from '../db/migrations/001_initial.js';
+import * as migration002 from '../db/migrations/002_add_context.js';
 
 let db: Kysely<Database>;
 let taskService: TaskService;
@@ -22,6 +23,7 @@ beforeAll(async () => {
   });
 
   await migration.up(db);
+  await migration002.up(db);
 
   // Create inbox project
   inboxId = crypto.randomUUID();

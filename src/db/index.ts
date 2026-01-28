@@ -5,9 +5,11 @@ import path from 'node:path';
 import { config } from '../config/index.js';
 import type { Database } from '../types/database.js';
 import * as migration001 from './migrations/001_initial.js';
+import * as migration002 from './migrations/002_add_context.js';
 
 const migrations: Record<string, Migration> = {
   '001_initial': migration001,
+  '002_add_context': migration002,
 };
 
 class StaticMigrationProvider implements MigrationProvider {

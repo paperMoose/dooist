@@ -10,6 +10,7 @@ export interface CreateTaskInput {
   priority?: number;
   due?: string;
   labels?: string[];
+  context?: string;
 }
 
 export interface UpdateTaskInput {
@@ -19,6 +20,7 @@ export interface UpdateTaskInput {
   priority?: number;
   due?: string;
   labels?: string[];
+  context?: string;
 }
 
 export interface ListTasksOptions {
@@ -171,6 +173,7 @@ export class TaskService {
       parent_id: null,
       content: input.content,
       description: input.description ?? null,
+      context: input.context ?? null,
       priority: input.priority ?? 1,
       is_completed: 0,
       completed_at: null,
@@ -221,6 +224,7 @@ export class TaskService {
 
     if (input.content !== undefined) updates.content = input.content;
     if (input.description !== undefined) updates.description = input.description;
+    if (input.context !== undefined) updates.context = input.context;
     if (input.projectId !== undefined) updates.project_id = input.projectId;
     if (input.priority !== undefined) updates.priority = input.priority;
 

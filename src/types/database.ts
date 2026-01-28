@@ -28,6 +28,7 @@ export interface TaskTable {
   due_string: string | null; // Original string like "every monday"
   due_is_recurring: number;
   due_timezone: string | null;
+  context: string | null;
   order: number;
   created_at: Generated<string>;
   updated_at: Generated<string>;

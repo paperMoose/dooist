@@ -14,6 +14,7 @@ export const createTaskSchema = z.object({
   priority: z.number().min(1).max(4).optional().describe('Priority 1-4 (4 = urgent, 1 = low)'),
   due: z.string().optional().describe('Due date string like "tomorrow", "next monday", "2024-03-15"'),
   labels: z.array(z.string()).optional().describe('Array of label names'),
+  context: z.string().optional().describe('Rich markdown context: intent, desired outputs, current status, spec plan'),
 });
 
 export const listTasksSchema = z.object({
@@ -34,6 +35,11 @@ export const updateTaskSchema = z.object({
   priority: z.number().min(1).max(4).optional().describe('New priority'),
   due: z.string().optional().describe('New due date'),
   labels: z.array(z.string()).optional().describe('Replace labels'),
+  context: z.string().optional().describe('Rich markdown context: intent, desired outputs, current status, spec plan'),
+});
+
+export const getTaskSchema = z.object({
+  id: z.string().describe('The task ID'),
 });
 
 export const upcomingSchema = z.object({
@@ -61,7 +67,7 @@ export function getToolDefinitions() {
   return [
     {
       name: 'create_task',
-      description: 'Create a new task. Supports natural language due dates like "tomorrow" or "every monday".',
+      description: 'Create a new task. Supports natural language due dates like "tomorrow" or "every monday". To create multiple tasks at once, call this tool multiple times in a single message.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -71,6 +77,7 @@ export function getToolDefinitions() {
           priority: { type: 'number', minimum: 1, maximum: 4, description: 'Priority 1-4 (4 = urgent)' },
           due: { type: 'string', description: 'Due date like "tomorrow", "next monday", "2024-03-15"' },
           labels: { type: 'array', items: { type: 'string' }, description: 'Array of label names' },
+          context: { type: 'string', description: 'Rich markdown context: intent, desired outputs, current status, spec plan' },
         },
         required: ['content'],
       },
@@ -122,6 +129,18 @@ export function getToolDefinitions() {
           priority: { type: 'number', minimum: 1, maximum: 4, description: 'New priority' },
           due: { type: 'string', description: 'New due date' },
           labels: { type: 'array', items: { type: 'string' }, description: 'Replace labels' },
+          context: { type: 'string', description: 'Rich markdown context: intent, desired outputs, current status, spec plan' },
+        },
+        required: ['id'],
+      },
+    },
+    {
+      name: 'get_task',
+      description: 'Get full details of a task including rich context (intent, outputs, plan).',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          id: { type: 'string', description: 'The task ID' },
         },
         required: ['id'],
       },
@@ -236,6 +255,8 @@ export class ToolHandlers {
         return this.reopenTask(args);
       case 'update_task':
         return this.updateTask(args);
+      case 'get_task':
+        return this.getTask(args);
       case 'delete_task':
         return this.deleteTask(args);
       case 'today':
@@ -273,6 +294,7 @@ export class ToolHandlers {
       priority: input.priority,
       due: input.due,
       labels: input.labels,
+      context: input.context,
     });
 
     return this.formatTask(task);
@@ -334,9 +356,19 @@ export class ToolHandlers {
       priority: input.priority,
       due: input.due,
       labels: input.labels,
+      context: input.context,
     });
 
     return `Updated task:\n${this.formatTask(task)}`;
+  }
+
+  private async getTask(args: Record<string, unknown>): Promise<string> {
+    const { id } = getTaskSchema.parse(args);
+    const task = await this.taskService.getById(id);
+    if (!task) {
+      throw new Error('Task not found');
+    }
+    return this.formatTaskFull(task);
   }
 
   private async deleteTask(args: Record<string, unknown>): Promise<string> {
@@ -479,11 +511,47 @@ export class ToolHandlers {
       parts.push(`Description: ${task.description}`);
     }
 
+    if (task.context) {
+      parts.push('[has context]');
+    }
+
     if (task.is_completed) {
       parts.push('(completed)');
     }
 
     return parts.join('\n  ');
+  }
+
+  private formatTaskFull(task: TaskWithLabels): string {
+    const parts = [`[${task.id.slice(0, 8)}] ${task.content}`];
+
+    if (task.priority > 1) {
+      parts.push(`Priority: P${5 - task.priority}`);
+    }
+
+    if (task.due_date) {
+      parts.push(`Due: ${task.due_string || task.due_date}`);
+    }
+
+    if (task.labels.length > 0) {
+      parts.push(`Labels: ${task.labels.map((l) => `@${l.name}`).join(' ')}`);
+    }
+
+    if (task.description) {
+      parts.push(`Description: ${task.description}`);
+    }
+
+    if (task.is_completed) {
+      parts.push('(completed)');
+    }
+
+    let result = parts.join('\n  ');
+
+    if (task.context) {
+      result += `\n\nContext:\n${task.context}`;
+    }
+
+    return result;
   }
 
   private formatProject(project: Project): string {

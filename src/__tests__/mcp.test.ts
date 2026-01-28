@@ -4,6 +4,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import type { Database } from '../types/database.js';
 import { ToolHandlers, getToolDefinitions } from '../mcp/tools.js';
 import * as migration from '../db/migrations/001_initial.js';
+import * as migration002 from '../db/migrations/002_add_context.js';
 
 let db: Kysely<Database>;
 let handlers: ToolHandlers;
@@ -18,6 +19,7 @@ beforeAll(async () => {
   });
 
   await migration.up(db);
+  await migration002.up(db);
 
   // Create inbox project
   inboxId = crypto.randomUUID();
@@ -56,6 +58,7 @@ describe('MCP Tool Definitions', () => {
     expect(toolNames).toContain('complete_task');
     expect(toolNames).toContain('reopen_task');
     expect(toolNames).toContain('update_task');
+    expect(toolNames).toContain('get_task');
     expect(toolNames).toContain('delete_task');
     expect(toolNames).toContain('today');
     expect(toolNames).toContain('upcoming');
@@ -582,6 +585,111 @@ describe('MCP Tool Handlers', () => {
 
       await expect(handlers.handleTool('create_label', { name: 'dupe-label' }))
         .rejects.toThrow('already exists');
+    });
+  });
+
+  describe('get_task', () => {
+    it('should return full task details with context', async () => {
+      await handlers.handleTool('create_task', {
+        content: 'Task with context',
+        context: '## Intent\nDo the thing\n## Plan\n1. Step one',
+      });
+      const taskId = await getLastCreatedTaskId();
+
+      const result = await handlers.handleTool('get_task', { id: taskId });
+
+      expect(result).toContain('Task with context');
+      expect(result).toContain('Context:');
+      expect(result).toContain('## Intent');
+      expect(result).toContain('Do the thing');
+      expect(result).toContain('## Plan');
+    });
+
+    it('should return task with truncated 8-char ID', async () => {
+      await handlers.handleTool('create_task', {
+        content: 'Truncated get',
+        context: '## Intent\nTest truncated ID',
+      });
+      const truncatedId = await getTruncatedTaskId();
+
+      const result = await handlers.handleTool('get_task', { id: truncatedId });
+
+      expect(result).toContain('Truncated get');
+      expect(result).toContain('## Intent');
+    });
+
+    it('should error on non-existent task', async () => {
+      await expect(handlers.handleTool('get_task', { id: 'fake-id' }))
+        .rejects.toThrow('Task not found');
+    });
+
+    it('should return task without context when none set', async () => {
+      await handlers.handleTool('create_task', { content: 'No context task' });
+      const taskId = await getLastCreatedTaskId();
+
+      const result = await handlers.handleTool('get_task', { id: taskId });
+
+      expect(result).toContain('No context task');
+      expect(result).not.toContain('Context:');
+    });
+  });
+
+  describe('context field', () => {
+    it('should create task with context', async () => {
+      const result = await handlers.handleTool('create_task', {
+        content: 'Contextual task',
+        context: '## Intent\nBuild feature X',
+      });
+
+      // list format should show indicator, not full body
+      expect(result).toContain('[has context]');
+      expect(result).not.toContain('## Intent');
+    });
+
+    it('should update task to add context', async () => {
+      await handlers.handleTool('create_task', { content: 'Add context later' });
+      const taskId = await getLastCreatedTaskId();
+
+      await handlers.handleTool('update_task', {
+        id: taskId,
+        context: '## Plan\nStep 1\nStep 2',
+      });
+
+      const result = await handlers.handleTool('get_task', { id: taskId });
+      expect(result).toContain('## Plan');
+      expect(result).toContain('Step 1');
+    });
+
+    it('should update task to change context', async () => {
+      await handlers.handleTool('create_task', {
+        content: 'Change context',
+        context: '## Old\nold content',
+      });
+      const taskId = await getLastCreatedTaskId();
+
+      await handlers.handleTool('update_task', {
+        id: taskId,
+        context: '## New\nnew content',
+      });
+
+      const result = await handlers.handleTool('get_task', { id: taskId });
+      expect(result).toContain('## New');
+      expect(result).toContain('new content');
+      expect(result).not.toContain('## Old');
+    });
+
+    it('should show [has context] indicator in list but not full body', async () => {
+      await handlers.handleTool('create_task', {
+        content: 'Listed context task',
+        context: '## Intent\nThis should not appear in list',
+      });
+
+      const result = await handlers.handleTool('list_tasks', {});
+
+      expect(result).toContain('Listed context task');
+      expect(result).toContain('[has context]');
+      expect(result).not.toContain('## Intent');
+      expect(result).not.toContain('This should not appear in list');
     });
   });
 
