@@ -28,6 +28,14 @@
   ],
   "author": "Ryan Brandt",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paperMoose/dooist.git"
+  },
+  "bugs": {
+    "url": "https://github.com/paperMoose/dooist/issues"
+  },
+  "homepage": "https://github.com/paperMoose/dooist#readme",
   "engines": {
     "node": ">=20.0.0"
   },

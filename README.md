@@ -1,5 +1,10 @@
 # Dooist
 
+[![npm version](https://img.shields.io/npm/v/dooist)](https://www.npmjs.com/package/dooist)
+[![npm downloads](https://img.shields.io/npm/dm/dooist)](https://www.npmjs.com/package/dooist)
+[![CI](https://github.com/paperMoose/dooist/actions/workflows/ci.yml/badge.svg)](https://github.com/paperMoose/dooist/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+
 The agent todo app. Task management built for AI agents, not people.
 
 ## Why
