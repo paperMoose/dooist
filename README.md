@@ -1,73 +1,76 @@
 # Dooist
 
-Task management MCP server for Claude Code. Like Todoist, but you actually do it.
+Task management for Claude Code. One task list across all your projects.
 
-## Quick Install
+## The Problem
+
+You use Claude Code across multiple repos. Personal projects, work stuff, side hustles. Each instance has no idea what you need to do outside that specific project.
+
+Tracking tasks in Markdown files? Switching to Todoist? Context switching kills flow.
+
+## The Solution
+
+Dooist is an MCP server with a single SQLite database. Every Claude Code instance sees your full task list.
+
+```
+"What's due today?" works everywhere.
+```
+
+## Install
 
 ```bash
-# Add to Claude Code globally
 claude mcp add dooist -- npx dooist
 ```
 
-Restart Claude Code, then try: "What are my tasks?"
-
-## Features
-
-- **Natural Language**: "remind me to call mom tomorrow"
-- **Priorities**: P1 (urgent) through P4 (low)
-- **Labels**: Organize with @work, @shopping, etc.
-- **Projects**: Group tasks (Inbox is default)
-- **Persistent**: SQLite database at `~/.dooist/`
+Restart Claude Code. Done.
 
 ## Usage
 
-Just talk naturally:
+Just talk:
 
 ```
-"add task to review PR due friday with priority 2"
-"what's due today"
-"list my tasks"
-"complete the PR task"
-"create project Work"
-"what's overdue"
+"remind me to fix the auth bug tomorrow"
+"add task to review PR with priority 1"
+"what's on my plate this week"
+"show me overdue tasks"
+"complete the PR review"
 ```
 
-## Available Tools
+## Features
 
-| Tool | Description |
-|------|-------------|
-| `create_task` | Create task with project, priority, due date, labels |
-| `list_tasks` | List tasks with filters |
+- **Natural language dates**: "tomorrow", "next monday", "in 3 days"
+- **Priorities**: P1 (urgent) through P4 (low)
+- **Labels**: @work, @personal, @urgent
+- **Projects**: Group related tasks
+- **Persistent**: SQLite at `~/.dooist/`
+- **Self-hosted**: Your data stays on your machine
+
+## Tools
+
+| Tool | What it does |
+|------|--------------|
+| `create_task` | Add task with due date, priority, labels |
+| `list_tasks` | Filter by project, label, status |
 | `complete_task` | Mark done |
-| `reopen_task` | Unmark done |
-| `update_task` | Modify task |
-| `delete_task` | Remove task |
-| `today` | Tasks due today + overdue |
+| `update_task` | Change anything |
+| `delete_task` | Remove |
+| `today` | Due today + overdue |
 | `upcoming` | Next N days |
 | `list_projects` | All projects |
 | `create_project` | New project |
 | `list_labels` | All labels |
 | `create_label` | New label |
 
-## Due Date Examples
-
-- `today`, `tomorrow`
-- `next monday`, `this friday`
-- `in 3 days`, `in 2 weeks`
-- `March 15`, `2024-03-15`
-
-## Configuration
-
-Set `DOOIST_DB_PATH` to customize database location:
+## Custom Database Location
 
 ```bash
-claude mcp add dooist -e DOOIST_DB_PATH=/custom/path/dooist.db -- npx dooist
+claude mcp add dooist -e DOOIST_DB_PATH=/your/path/dooist.db -- npx dooist
 ```
 
 ## Development
 
 ```bash
-git clone https://github.com/ryanbrandt/dooist
+git clone https://github.com/paperMoose/dooist
 cd dooist
 npm install
 npm run build
