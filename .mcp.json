@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "dooist": {
+      "command": "node",
+      "args": ["/Users/ryanbrandt/git/todoistclone/dist/mcp-stdio.js"]
+    }
+  }
+}

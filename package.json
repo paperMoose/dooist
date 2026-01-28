@@ -1,11 +1,11 @@
 {
-  "name": "@ryanbrandt/todoist-clone",
+  "name": "dooist",
   "version": "0.1.0",
-  "description": "Open-source Todoist clone with MCP integration for Claude Code sessions",
+  "description": "Task management MCP server for Claude Code. Like Todoist, but you actually do it.",
   "type": "module",
   "main": "dist/mcp-stdio.js",
   "bin": {
-    "todoistclone": "./dist/mcp-stdio.js"
+    "dooist": "./dist/mcp-stdio.js"
   },
   "scripts": {
     "build": "tsc",
@@ -17,11 +17,14 @@
     "test:watch": "vitest"
   },
   "keywords": [
+    "dooist",
     "todoist",
     "mcp",
     "claude",
+    "claude-code",
     "task-management",
-    "productivity"
+    "productivity",
+    "todo"
   ],
   "author": "Ryan Brandt",
   "license": "MIT",

@@ -1,117 +1,78 @@
-# Todoist Clone
+# Dooist
 
-Open-source Todoist clone with MCP integration for Claude Code sessions. Runs locally with SQLite.
+Task management MCP server for Claude Code. Like Todoist, but you actually do it.
+
+## Quick Install
+
+```bash
+# Add to Claude Code globally
+claude mcp add dooist -- npx dooist
+```
+
+Restart Claude Code, then try: "What are my tasks?"
 
 ## Features
 
-- **MCP Server**: Full integration with Claude Code for task management via natural language
-- **Natural Language Dates**: "tomorrow", "next monday", "every friday" parsed automatically
-- **Priority Levels**: P1 (urgent) through P4 (low)
-- **Labels**: Organize tasks with custom labels
-- **Projects**: Group tasks into projects (Inbox is created by default)
-- **Today/Upcoming Views**: Quick access to due tasks
+- **Natural Language**: "remind me to call mom tomorrow"
+- **Priorities**: P1 (urgent) through P4 (low)
+- **Labels**: Organize with @work, @shopping, etc.
+- **Projects**: Group tasks (Inbox is default)
+- **Persistent**: SQLite database at `~/.dooist/`
 
-## Installation
+## Usage
 
-```bash
-npm install
-npm run build
+Just talk naturally:
+
+```
+"add task to review PR due friday with priority 2"
+"what's due today"
+"list my tasks"
+"complete the PR task"
+"create project Work"
+"what's overdue"
 ```
 
-## Usage with Claude Code
-
-Add to your `.claude/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "todoist": {
-      "command": "node",
-      "args": ["/path/to/todoistclone/dist/mcp-stdio.js"]
-    }
-  }
-}
-```
-
-Then restart Claude Code. You can now manage tasks with natural language:
-
-- "What are my tasks for today?"
-- "Create a task to review PR #123 due tomorrow with priority 2"
-- "Complete task [id]"
-- "Show my upcoming tasks for the next 7 days"
-
-## Available MCP Tools
+## Available Tools
 
 | Tool | Description |
 |------|-------------|
-| `create_task` | Create a new task with optional project, priority, due date, labels |
-| `list_tasks` | List tasks with optional project/label filters |
-| `complete_task` | Mark a task as completed |
-| `reopen_task` | Reopen a completed task |
-| `update_task` | Update task content, priority, due date, or labels |
-| `delete_task` | Delete a task permanently |
-| `today` | Get all tasks due today (including overdue) |
-| `upcoming` | Get tasks due in the next N days |
-| `list_projects` | List all projects |
-| `create_project` | Create a new project |
-| `list_labels` | List all labels |
-| `create_label` | Create a new label |
+| `create_task` | Create task with project, priority, due date, labels |
+| `list_tasks` | List tasks with filters |
+| `complete_task` | Mark done |
+| `reopen_task` | Unmark done |
+| `update_task` | Modify task |
+| `delete_task` | Remove task |
+| `today` | Tasks due today + overdue |
+| `upcoming` | Next N days |
+| `list_projects` | All projects |
+| `create_project` | New project |
+| `list_labels` | All labels |
+| `create_label` | New label |
 
 ## Due Date Examples
 
-The following natural language formats are supported:
-
-- `today`, `tomorrow`, `yesterday`
+- `today`, `tomorrow`
 - `next monday`, `this friday`
 - `in 3 days`, `in 2 weeks`
 - `March 15`, `2024-03-15`
-- `every monday` (recurring)
-- `daily`, `weekly`, `monthly`
+
+## Configuration
+
+Set `DOOIST_DB_PATH` to customize database location:
+
+```bash
+claude mcp add dooist -e DOOIST_DB_PATH=/custom/path/dooist.db -- npx dooist
+```
 
 ## Development
 
 ```bash
-# Install dependencies
+git clone https://github.com/ryanbrandt/dooist
+cd dooist
 npm install
-
-# Run TypeScript compiler in watch mode
-npm run dev
-
-# Run tests
+npm run build
 npm test
-
-# Lint code
-npm run lint
-
-# Type check
-npm run typecheck
 ```
-
-## Project Structure
-
-```
-src/
-├── config/          # Environment configuration
-├── db/              # Database factory and migrations
-│   └── migrations/  # Kysely migrations
-├── mcp/             # MCP server and tools
-├── services/        # Business logic (tasks, projects, labels)
-├── types/           # TypeScript type definitions
-├── __tests__/       # Test files
-└── mcp-stdio.ts     # Entry point
-```
-
-## Database
-
-Data is stored in SQLite at `./data/todoist.db`. The database is created automatically on first run.
-
-### Schema
-
-- **projects**: id, name, color, order, is_inbox, is_archived
-- **tasks**: id, project_id, content, description, priority, due_*, is_completed
-- **labels**: id, name, color, order
-- **task_labels**: task_id, label_id (join table)
-- **sections**: id, project_id, name, order
 
 ## License
 

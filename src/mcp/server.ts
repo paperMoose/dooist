@@ -11,7 +11,7 @@ import { getToolDefinitions, ToolHandlers } from './tools.js';
 export function createMcpServer(db: Kysely<Database>): Server {
   const server = new Server(
     {
-      name: 'todoist-clone',
+      name: 'dooist',
       version: '0.1.0',
     },
     {
