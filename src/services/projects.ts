@@ -14,6 +14,14 @@ export class ProjectService {
   }
 
   async getById(id: string): Promise<Project | undefined> {
+    if (id.length < 36) {
+      return this.db
+        .selectFrom('projects')
+        .where('id', 'like', `${id}%`)
+        .selectAll()
+        .executeTakeFirst();
+    }
+
     return this.db
       .selectFrom('projects')
       .where('id', '=', id)

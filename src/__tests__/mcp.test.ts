@@ -102,6 +102,37 @@ describe('MCP Tool Handlers', () => {
       expect(result).toMatch(/^\[[\w-]{8}\]/); // Starts with [8-char-id]
     });
 
+    it('should create task with all fields', async () => {
+      await handlers.handleTool('create_project', { name: 'AllFields' });
+
+      const result = await handlers.handleTool('create_task', {
+        content: 'Full task',
+        description: 'Detailed desc',
+        project: 'AllFields',
+        priority: 3,
+        due: 'tomorrow',
+        labels: ['home', 'errand'],
+      });
+
+      expect(result).toContain('Full task');
+      expect(result).toContain('Description: Detailed desc');
+      expect(result).toContain('Priority: P2'); // priority 3 = P2 display
+      expect(result).toContain('Due: tomorrow');
+      expect(result).toContain('@home');
+      expect(result).toContain('@errand');
+    });
+
+    it('should create task with only content (minimal)', async () => {
+      const result = await handlers.handleTool('create_task', {
+        content: 'Minimal task',
+      });
+
+      expect(result).toContain('Minimal task');
+      expect(result).not.toContain('Priority:');
+      expect(result).not.toContain('Due:');
+      expect(result).not.toContain('Labels:');
+    });
+
     it('should create task with priority and show P-level', async () => {
       const result = await handlers.handleTool('create_task', {
         content: 'Urgent task',
@@ -112,6 +143,14 @@ describe('MCP Tool Handlers', () => {
       expect(result).toContain('Priority: P1'); // Priority 4 = P1 display
     });
 
+    it('should reject invalid priority', async () => {
+      await expect(handlers.handleTool('create_task', { content: 'test', priority: 10 }))
+        .rejects.toThrow();
+
+      await expect(handlers.handleTool('create_task', { content: 'test', priority: 0 }))
+        .rejects.toThrow();
+    });
+
     it('should create task with due date', async () => {
       const result = await handlers.handleTool('create_task', {
         content: 'Task with due',
@@ -120,6 +159,16 @@ describe('MCP Tool Handlers', () => {
 
       expect(result).toContain('Task with due');
       expect(result).toContain('Due: tomorrow');
+    });
+
+    it('should create task with natural language due date', async () => {
+      const result = await handlers.handleTool('create_task', {
+        content: 'Monday task',
+        due: 'next monday',
+      });
+
+      expect(result).toContain('Monday task');
+      expect(result).toContain('Due: next monday');
     });
 
     it('should create task with labels', async () => {
@@ -164,6 +213,28 @@ describe('MCP Tool Handlers', () => {
       expect(workResult).toContain('Work task');
       expect(workResult).not.toContain('Inbox task');
     });
+
+    it('should filter by label name', async () => {
+      await handlers.handleTool('create_task', { content: 'Tagged', labels: ['focus'] });
+      await handlers.handleTool('create_task', { content: 'Untagged' });
+
+      const result = await handlers.handleTool('list_tasks', { label: 'focus' });
+
+      expect(result).toContain('Tagged');
+      expect(result).not.toContain('Untagged');
+    });
+
+    it('should include completed tasks when requested', async () => {
+      await handlers.handleTool('create_task', { content: 'Done task' });
+      const taskId = await getLastCreatedTaskId();
+      await handlers.handleTool('complete_task', { id: taskId });
+
+      const withoutCompleted = await handlers.handleTool('list_tasks', {});
+      const withCompleted = await handlers.handleTool('list_tasks', { completed: true });
+
+      expect(withoutCompleted).toBe('No tasks found.');
+      expect(withCompleted).toContain('Done task');
+    });
   });
 
   describe('complete_task / reopen_task', () => {
@@ -176,6 +247,15 @@ describe('MCP Tool Handlers', () => {
       expect(result).toContain('Completed: To complete');
     });
 
+    it('should complete a task using 8-char truncated ID', async () => {
+      await handlers.handleTool('create_task', { content: 'Truncated complete' });
+      const truncatedId = await getTruncatedTaskId();
+
+      const result = await handlers.handleTool('complete_task', { id: truncatedId });
+
+      expect(result).toContain('Completed: Truncated complete');
+    });
+
     it('should reopen a completed task', async () => {
       await handlers.handleTool('create_task', { content: 'To reopen' });
       const taskId = await getLastCreatedTaskId();
@@ -184,6 +264,34 @@ describe('MCP Tool Handlers', () => {
       const result = await handlers.handleTool('reopen_task', { id: taskId });
 
       expect(result).toContain('Reopened: To reopen');
+    });
+
+    it('should reopen using 8-char truncated ID', async () => {
+      await handlers.handleTool('create_task', { content: 'Truncated reopen' });
+      const truncatedId = await getTruncatedTaskId();
+
+      await handlers.handleTool('complete_task', { id: truncatedId });
+      const result = await handlers.handleTool('reopen_task', { id: truncatedId });
+
+      expect(result).toContain('Reopened: Truncated reopen');
+    });
+
+    it('should complete already-completed task', async () => {
+      await handlers.handleTool('create_task', { content: 'Double complete' });
+      const taskId = await getLastCreatedTaskId();
+
+      await handlers.handleTool('complete_task', { id: taskId });
+      // Completing again should still work (idempotent)
+      const result = await handlers.handleTool('complete_task', { id: taskId });
+      expect(result).toContain('Completed: Double complete');
+    });
+
+    it('should reopen a non-completed task without error', async () => {
+      await handlers.handleTool('create_task', { content: 'Not completed' });
+      const taskId = await getLastCreatedTaskId();
+
+      const result = await handlers.handleTool('reopen_task', { id: taskId });
+      expect(result).toContain('Reopened: Not completed');
     });
 
     it('should error on non-existent task', async () => {
@@ -206,6 +314,55 @@ describe('MCP Tool Handlers', () => {
       expect(result).toContain('Updated content');
     });
 
+    it('should update task using 8-char truncated ID', async () => {
+      await handlers.handleTool('create_task', { content: 'Before update' });
+      const truncatedId = await getTruncatedTaskId();
+
+      const result = await handlers.handleTool('update_task', {
+        id: truncatedId,
+        content: 'After update',
+      });
+
+      expect(result).toContain('Updated task');
+      expect(result).toContain('After update');
+    });
+
+    it('should update priority, due date, and labels', async () => {
+      await handlers.handleTool('create_task', { content: 'Multi update' });
+      const truncatedId = await getTruncatedTaskId();
+
+      const result = await handlers.handleTool('update_task', {
+        id: truncatedId,
+        priority: 4,
+        due: 'tomorrow',
+        labels: ['updated-label'],
+      });
+
+      expect(result).toContain('Priority: P1');
+      expect(result).toContain('Due: tomorrow');
+      expect(result).toContain('@updated-label');
+    });
+
+    it('should update with project name (not ID)', async () => {
+      await handlers.handleTool('create_project', { name: 'MoveTarget' });
+      await handlers.handleTool('create_task', { content: 'Moveable task' });
+      const truncatedId = await getTruncatedTaskId();
+
+      const result = await handlers.handleTool('update_task', {
+        id: truncatedId,
+        project: 'MoveTarget',
+      });
+
+      expect(result).toContain('Updated task');
+
+      // Verify it's no longer in Inbox
+      const inboxTasks = await handlers.handleTool('list_tasks', { project: 'Inbox' });
+      expect(inboxTasks).not.toContain('Moveable task');
+
+      const targetTasks = await handlers.handleTool('list_tasks', { project: 'MoveTarget' });
+      expect(targetTasks).toContain('Moveable task');
+    });
+
     it('should error on non-existent task', async () => {
       await expect(handlers.handleTool('update_task', { id: 'fake-id', content: 'test' }))
         .rejects.toThrow('Task not found');
@@ -224,6 +381,35 @@ describe('MCP Tool Handlers', () => {
       // Verify it's gone
       const listResult = await handlers.handleTool('list_tasks', {});
       expect(listResult).toBe('No tasks found.');
+    });
+
+    it('should delete using 8-char truncated ID', async () => {
+      await handlers.handleTool('create_task', { content: 'Truncated delete' });
+      const truncatedId = await getTruncatedTaskId();
+
+      const result = await handlers.handleTool('delete_task', { id: truncatedId });
+
+      expect(result).toBe('Task deleted.');
+
+      const listResult = await handlers.handleTool('list_tasks', {});
+      expect(listResult).toBe('No tasks found.');
+    });
+
+    it('should cascade delete task_labels on task delete', async () => {
+      await handlers.handleTool('create_task', { content: 'Labeled delete', labels: ['cascade-test'] });
+      const truncatedId = await getTruncatedTaskId();
+      const fullId = await getLastCreatedTaskId();
+
+      await handlers.handleTool('delete_task', { id: truncatedId });
+
+      // Verify task_labels rows are gone
+      const orphanedLabels = await db
+        .selectFrom('task_labels')
+        .where('task_id', '=', fullId)
+        .selectAll()
+        .execute();
+
+      expect(orphanedLabels).toHaveLength(0);
     });
 
     it('should error on non-existent task', async () => {
@@ -249,6 +435,35 @@ describe('MCP Tool Handlers', () => {
       expect(result).toContain('Today task');
       expect(result).not.toContain('Tomorrow task');
     });
+
+    it('should return overdue tasks', async () => {
+      // Insert a task with a past due date directly
+      const taskId = crypto.randomUUID();
+      await db.insertInto('tasks').values({
+        id: taskId,
+        project_id: inboxId,
+        content: 'Overdue task',
+        priority: 1,
+        is_completed: 0,
+        due_date: '2020-01-01',
+        due_string: '2020-01-01',
+        order: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).execute();
+
+      const result = await handlers.handleTool('today', {});
+
+      expect(result).toContain('Overdue task');
+    });
+
+    it('should exclude future tasks', async () => {
+      await handlers.handleTool('create_task', { content: 'Future task', due: 'in 10 days' });
+
+      const result = await handlers.handleTool('today', {});
+
+      expect(result).not.toContain('Future task');
+    });
   });
 
   describe('upcoming', () => {
@@ -267,6 +482,23 @@ describe('MCP Tool Handlers', () => {
       expect(result).toContain('Soon task');
     });
 
+    it('should use custom days parameter', async () => {
+      await handlers.handleTool('create_task', { content: 'Soon task', due: 'tomorrow' });
+
+      const result = await handlers.handleTool('upcoming', { days: 3 });
+
+      expect(result).toContain('next 3 days');
+      expect(result).toContain('Soon task');
+    });
+
+    it('should exclude tasks beyond the window', async () => {
+      await handlers.handleTool('create_task', { content: 'Far task', due: 'in 30 days' });
+
+      const result = await handlers.handleTool('upcoming', { days: 3 });
+
+      expect(result).toBe('No tasks due in the next 3 days.');
+    });
+
     it('should default to 7 days', async () => {
       const result = await handlers.handleTool('upcoming', {});
 
@@ -279,6 +511,16 @@ describe('MCP Tool Handlers', () => {
       const result = await handlers.handleTool('list_projects', {});
 
       expect(result).toContain('Inbox');
+      expect(result).toContain('(Inbox)');
+    });
+
+    it('should list created projects alongside Inbox', async () => {
+      await handlers.handleTool('create_project', { name: 'ListedProject' });
+
+      const result = await handlers.handleTool('list_projects', {});
+
+      expect(result).toContain('Inbox');
+      expect(result).toContain('ListedProject');
     });
   });
 
@@ -291,6 +533,19 @@ describe('MCP Tool Handlers', () => {
 
       expect(result).toContain('Created project');
       expect(result).toContain('New Project');
+    });
+
+    it('should create a project with color', async () => {
+      const result = await handlers.handleTool('create_project', {
+        name: 'Colored Project',
+        color: 'green',
+      });
+
+      expect(result).toContain('Colored Project');
+
+      // Verify it shows up in list
+      const list = await handlers.handleTool('list_projects', {});
+      expect(list).toContain('Colored Project');
     });
   });
 
@@ -321,12 +576,33 @@ describe('MCP Tool Handlers', () => {
       expect(result).toContain('@new-label');
       expect(result).toContain('blue');
     });
+
+    it('should error on duplicate label name', async () => {
+      await handlers.handleTool('create_label', { name: 'dupe-label' });
+
+      await expect(handlers.handleTool('create_label', { name: 'dupe-label' }))
+        .rejects.toThrow('already exists');
+    });
   });
 
   describe('unknown tool', () => {
     it('should throw on unknown tool name', async () => {
       await expect(handlers.handleTool('nonexistent_tool', {}))
         .rejects.toThrow('Unknown tool: nonexistent_tool');
+    });
+  });
+
+  describe('scan_todos', () => {
+    it('should scan a directory and find TODO comments', async () => {
+      // Scan the project's own source (which may have TODOs)
+      // This tests the tool integration - even if no TODOs found, it should not error
+      const result = await handlers.handleTool('scan_todos', {
+        directory: '/Users/ryanbrandt/git/todoistclone/src',
+      });
+
+      // Should return a result (either found or not found)
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/TODO|No TODOs found/);
     });
   });
 
@@ -355,4 +631,10 @@ async function getLastCreatedTaskId(): Promise<string> {
     throw new Error('No tasks found in database');
   }
   return task.id;
+}
+
+// Helper to get 8-char truncated ID (matching MCP output format)
+async function getTruncatedTaskId(): Promise<string> {
+  const fullId = await getLastCreatedTaskId();
+  return fullId.slice(0, 8);
 }

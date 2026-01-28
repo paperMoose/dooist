@@ -1,6 +1,6 @@
 {
   "name": "dooist",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Task management MCP server for Claude Code. Like Todoist, but you actually do it.",
   "type": "module",
   "main": "dist/mcp-stdio.js",

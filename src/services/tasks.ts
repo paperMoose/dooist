@@ -35,15 +35,26 @@ export class TaskService {
   }
 
   async getById(id: string): Promise<TaskWithLabels | undefined> {
-    const task = await this.db
-      .selectFrom('tasks')
-      .where('id', '=', id)
-      .selectAll()
-      .executeTakeFirst();
+    let task;
+
+    if (id.length < 36) {
+      // Support prefix matching for truncated IDs
+      task = await this.db
+        .selectFrom('tasks')
+        .where('id', 'like', `${id}%`)
+        .selectAll()
+        .executeTakeFirst();
+    } else {
+      task = await this.db
+        .selectFrom('tasks')
+        .where('id', '=', id)
+        .selectAll()
+        .executeTakeFirst();
+    }
 
     if (!task) return undefined;
 
-    const labels = await this.getTaskLabels(id);
+    const labels = await this.getTaskLabels(task.id);
     return { ...task, labels };
   }
 
@@ -230,25 +241,26 @@ export class TaskService {
       }
     }
 
-    await this.db.updateTable('tasks').set(updates).where('id', '=', id).execute();
+    await this.db.updateTable('tasks').set(updates).where('id', '=', existing.id).execute();
 
     if (input.labels !== undefined) {
-      await this.setTaskLabels(id, input.labels);
+      await this.setTaskLabels(existing.id, input.labels);
     }
 
-    const task = await this.getById(id);
+    const task = await this.getById(existing.id);
     return task!;
   }
 
   async delete(id: string): Promise<void> {
-    const result = await this.db
-      .deleteFrom('tasks')
-      .where('id', '=', id)
-      .executeTakeFirst();
-
-    if (result.numDeletedRows === 0n) {
+    const existing = await this.getById(id);
+    if (!existing) {
       throw new Error('Task not found');
     }
+
+    await this.db
+      .deleteFrom('tasks')
+      .where('id', '=', existing.id)
+      .execute();
   }
 
   async complete(id: string): Promise<TaskWithLabels> {
@@ -265,7 +277,7 @@ export class TaskService {
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .where('id', '=', id)
+      .where('id', '=', existing.id)
       .execute();
 
     return { ...existing, is_completed: 1, completed_at: new Date().toISOString() };
@@ -285,7 +297,7 @@ export class TaskService {
         completed_at: null,
         updated_at: new Date().toISOString(),
       })
-      .where('id', '=', id)
+      .where('id', '=', existing.id)
       .execute();
 
     return { ...existing, is_completed: 0, completed_at: null };
