@@ -102,12 +102,13 @@ Just talk:
 
 | Tool | What it does |
 |------|--------------|
-| `create_task` | Add task with context, due date, priority, labels |
+| `create_task` | Add task with context, due date, priority, labels, parentId |
 | `get_task` | Full task details including rich context body |
-| `list_tasks` | Filter by project, label, status — scannable summaries |
+| `list_tasks` | Filter by project, label, status, parentId — scannable summaries |
 | `complete_task` | Mark done |
-| `update_task` | Change anything including context |
-| `delete_task` | Remove |
+| `update_task` | Change anything including context and parent |
+| `delete_task` | Remove (cascades to subtasks) |
+| `add_task_update` | Append timestamped status update to a task |
 | `today` | Due today + overdue |
 | `upcoming` | Next N days |
 | `scan_todos` | Find TODO/FIXME/HACK comments in codebase |
@@ -119,6 +120,8 @@ Just talk:
 ## Features
 
 - **Rich task context**: Markdown body with intent, plan, outputs, status
+- **Subtasks**: Nest tasks with `parentId`, cascade delete, filter by parent
+- **Task updates**: Timestamped activity log per task
 - **Natural language dates**: "tomorrow", "next monday", "in 3 days"
 - **Priorities**: P1 (urgent) through P4 (low)
 - **Labels**: @work, @personal, @urgent
