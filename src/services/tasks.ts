@@ -11,6 +11,7 @@ export interface CreateTaskInput {
   due?: string;
   labels?: string[];
   context?: string;
+  parentId?: string;
 }
 
 export interface UpdateTaskInput {
@@ -21,12 +22,15 @@ export interface UpdateTaskInput {
   due?: string;
   labels?: string[];
   context?: string;
+  parentId?: string | null;
 }
 
 export interface ListTasksOptions {
   projectId?: string;
   labelId?: string;
   completed?: boolean;
+  parentId?: string;
+  topLevel?: boolean;
 }
 
 export class TaskService {
@@ -80,6 +84,13 @@ export class TaskService {
           .where('label_id', '=', options.labelId!)
           .select('task_id')
       );
+    }
+
+    // Filter by parent
+    if (options.parentId) {
+      query = query.where('parent_id', '=', options.parentId);
+    } else if (options.topLevel) {
+      query = query.where('parent_id', 'is', null);
     }
 
     const tasks = await query.orderBy('order', 'asc').execute();
@@ -170,7 +181,7 @@ export class TaskService {
       id: taskId,
       project_id: projectId,
       section_id: null,
-      parent_id: null,
+      parent_id: input.parentId ?? null,
       content: input.content,
       description: input.description ?? null,
       context: input.context ?? null,
@@ -227,6 +238,7 @@ export class TaskService {
     if (input.context !== undefined) updates.context = input.context;
     if (input.projectId !== undefined) updates.project_id = input.projectId;
     if (input.priority !== undefined) updates.priority = input.priority;
+    if (input.parentId !== undefined) updates.parent_id = input.parentId;
 
     if (input.due !== undefined) {
       if (input.due === null || input.due === '') {

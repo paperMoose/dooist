@@ -730,6 +730,160 @@ describe('MCP Tool Handlers', () => {
     });
   });
 
+  describe('subtasks', () => {
+    it('should create a subtask with parentId', async () => {
+      await handlers.handleTool('create_task', { content: 'Parent task' });
+      const parentId = await getTruncatedTaskId();
+
+      const result = await handlers.handleTool('create_task', {
+        content: 'Child task',
+        parentId,
+      });
+
+      expect(result).toContain('Child task');
+      expect(result).toContain('[subtask]');
+    });
+
+    it('should list subtasks using parentId filter', async () => {
+      await handlers.handleTool('create_task', { content: 'Parent for listing' });
+      const parentId = await getTruncatedTaskId();
+
+      await handlers.handleTool('create_task', { content: 'Subtask 1', parentId });
+      await handlers.handleTool('create_task', { content: 'Subtask 2', parentId });
+      await handlers.handleTool('create_task', { content: 'Top level task' });
+
+      const subtasks = await handlers.handleTool('list_tasks', { parentId });
+
+      expect(subtasks).toContain('Subtask 1');
+      expect(subtasks).toContain('Subtask 2');
+      expect(subtasks).not.toContain('Top level task');
+      expect(subtasks).not.toContain('Parent for listing');
+    });
+
+    it('should exclude subtasks from top-level list by default', async () => {
+      await handlers.handleTool('create_task', { content: 'Parent task' });
+      const parentId = await getTruncatedTaskId();
+
+      await handlers.handleTool('create_task', { content: 'Hidden subtask', parentId });
+      await handlers.handleTool('create_task', { content: 'Visible top-level' });
+
+      const result = await handlers.handleTool('list_tasks', {});
+
+      expect(result).toContain('Parent task');
+      expect(result).toContain('Visible top-level');
+      expect(result).not.toContain('Hidden subtask');
+    });
+
+    it('should show all tasks when topLevel is false', async () => {
+      await handlers.handleTool('create_task', { content: 'Parent task' });
+      const parentId = await getTruncatedTaskId();
+
+      await handlers.handleTool('create_task', { content: 'Subtask', parentId });
+      await handlers.handleTool('create_task', { content: 'Top level' });
+
+      const result = await handlers.handleTool('list_tasks', { topLevel: false });
+
+      expect(result).toContain('Parent task');
+      expect(result).toContain('Top level');
+      expect(result).toContain('Subtask');
+    });
+
+    it('should update task to become a subtask', async () => {
+      await handlers.handleTool('create_task', { content: 'Future parent' });
+      const parentFullId = await getLastCreatedTaskId();
+      const parentId = parentFullId.slice(0, 8);
+
+      await handlers.handleTool('create_task', { content: 'Will become subtask' });
+      const childFullId = await getLastCreatedTaskId();
+      const childId = childFullId.slice(0, 8);
+
+      const result = await handlers.handleTool('update_task', {
+        id: childId,
+        parentId,
+      });
+
+      expect(result).toContain('Will become subtask');
+      expect(result).toContain('[subtask]');
+    });
+
+    it('should update task to become top-level (parentId: null)', async () => {
+      await handlers.handleTool('create_task', { content: 'Original parent' });
+      const parentFullId = await getLastCreatedTaskId();
+      const parentId = parentFullId.slice(0, 8);
+
+      await handlers.handleTool('create_task', { content: 'Will become top-level', parentId });
+      const childFullId = await getLastCreatedTaskId();
+      const childId = childFullId.slice(0, 8);
+
+      // Verify it's a subtask
+      const before = await handlers.handleTool('get_task', { id: childId });
+      expect(before).toContain('Parent:');
+
+      // Make it top-level
+      await handlers.handleTool('update_task', {
+        id: childId,
+        parentId: null,
+      });
+
+      const after = await handlers.handleTool('get_task', { id: childId });
+      expect(after).not.toContain('Parent:');
+    });
+
+    it('should cascade delete subtasks when parent is deleted', async () => {
+      await handlers.handleTool('create_task', { content: 'Parent to delete' });
+      const parentId = await getLastCreatedTaskId();
+      const parentTruncated = parentId.slice(0, 8);
+
+      await handlers.handleTool('create_task', { content: 'Child 1', parentId: parentTruncated });
+      await handlers.handleTool('create_task', { content: 'Child 2', parentId: parentTruncated });
+
+      // Delete parent
+      await handlers.handleTool('delete_task', { id: parentTruncated });
+
+      // Verify children are gone too
+      const remaining = await db
+        .selectFrom('tasks')
+        .select('content')
+        .execute();
+
+      const contents = remaining.map(t => t.content);
+      expect(contents).not.toContain('Parent to delete');
+      expect(contents).not.toContain('Child 1');
+      expect(contents).not.toContain('Child 2');
+    });
+
+    it('should show parent ID in get_task for subtasks', async () => {
+      await handlers.handleTool('create_task', { content: 'Parent for get' });
+      const parentFullId = await getLastCreatedTaskId();
+      const parentId = parentFullId.slice(0, 8);
+
+      await handlers.handleTool('create_task', { content: 'Child for get', parentId });
+      const childFullId = await getLastCreatedTaskId();
+      const childId = childFullId.slice(0, 8);
+
+      const result = await handlers.handleTool('get_task', { id: childId });
+
+      expect(result).toContain('Child for get');
+      expect(result).toContain(`Parent: ${parentId}`);
+    });
+
+    it('should error when parentId does not exist', async () => {
+      await expect(handlers.handleTool('create_task', {
+        content: 'Orphan task',
+        parentId: 'nonexist',
+      })).rejects.toThrow('Parent task not found');
+    });
+
+    it('should return "No subtasks found" when parent has no children', async () => {
+      await handlers.handleTool('create_task', { content: 'Childless parent' });
+      const parentId = await getTruncatedTaskId();
+
+      const result = await handlers.handleTool('list_tasks', { parentId });
+
+      expect(result).toBe('No subtasks found.');
+    });
+  });
+
   describe('unknown tool', () => {
     it('should throw on unknown tool name', async () => {
       await expect(handlers.handleTool('nonexistent_tool', {}))
@@ -769,7 +923,7 @@ async function getLastCreatedTaskId(): Promise<string> {
   const task = await db
     .selectFrom('tasks')
     .select('id')
-    .orderBy('created_at', 'desc')
+    .orderBy('order', 'desc')
     .executeTakeFirst();
 
   if (!task) {

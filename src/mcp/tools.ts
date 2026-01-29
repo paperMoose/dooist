@@ -15,12 +15,15 @@ export const createTaskSchema = z.object({
   due: z.string().optional().describe('Due date string like "tomorrow", "next monday", "2024-03-15"'),
   labels: z.array(z.string()).optional().describe('Array of label names'),
   context: z.string().optional().describe('Rich markdown context: intent, desired outputs, current status, spec plan'),
+  parentId: z.string().optional().describe('Parent task ID to create this as a subtask'),
 });
 
 export const listTasksSchema = z.object({
   project: z.string().optional().describe('Filter by project name or ID'),
   label: z.string().optional().describe('Filter by label name'),
   completed: z.boolean().optional().describe('Include completed tasks'),
+  parentId: z.string().optional().describe('Filter by parent task ID (get subtasks)'),
+  topLevel: z.boolean().optional().describe('Only show top-level tasks (no subtasks)'),
 });
 
 export const taskIdSchema = z.object({
@@ -36,6 +39,7 @@ export const updateTaskSchema = z.object({
   due: z.string().optional().describe('New due date'),
   labels: z.array(z.string()).optional().describe('Replace labels'),
   context: z.string().optional().describe('Rich markdown context: intent, desired outputs, current status, spec plan'),
+  parentId: z.string().nullable().optional().describe('Parent task ID (null to make top-level)'),
 });
 
 export const getTaskSchema = z.object({
@@ -72,7 +76,7 @@ export function getToolDefinitions() {
   return [
     {
       name: 'create_task',
-      description: 'Create a new task. Supports natural language due dates like "tomorrow" or "every monday". To create multiple tasks at once, call this tool multiple times in a single message.',
+      description: 'Create a new task. Supports natural language due dates like "tomorrow" or "every monday". To create multiple tasks at once, call this tool multiple times in a single message. Use parentId to create subtasks.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -83,19 +87,22 @@ export function getToolDefinitions() {
           due: { type: 'string', description: 'Due date like "tomorrow", "next monday", "2024-03-15"' },
           labels: { type: 'array', items: { type: 'string' }, description: 'Array of label names' },
           context: { type: 'string', description: 'Rich markdown context: intent, desired outputs, current status, spec plan' },
+          parentId: { type: 'string', description: 'Parent task ID to create this as a subtask' },
         },
         required: ['content'],
       },
     },
     {
       name: 'list_tasks',
-      description: 'List tasks with optional filters. By default shows incomplete tasks.',
+      description: 'List tasks with optional filters. By default shows incomplete top-level tasks. Use parentId to get subtasks of a specific task.',
       inputSchema: {
         type: 'object' as const,
         properties: {
           project: { type: 'string', description: 'Filter by project name or ID' },
           label: { type: 'string', description: 'Filter by label name' },
           completed: { type: 'boolean', description: 'Include completed tasks' },
+          parentId: { type: 'string', description: 'Filter by parent task ID (get subtasks)' },
+          topLevel: { type: 'boolean', description: 'Only show top-level tasks (no subtasks). Default: true' },
         },
       },
     },
@@ -123,7 +130,7 @@ export function getToolDefinitions() {
     },
     {
       name: 'update_task',
-      description: 'Update an existing task.',
+      description: 'Update an existing task. Use parentId to convert to subtask or null to make top-level.',
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -135,6 +142,7 @@ export function getToolDefinitions() {
           due: { type: 'string', description: 'New due date' },
           labels: { type: 'array', items: { type: 'string' }, description: 'Replace labels' },
           context: { type: 'string', description: 'Rich markdown context: intent, desired outputs, current status, spec plan' },
+          parentId: { type: ['string', 'null'], description: 'Parent task ID (null to make top-level)' },
         },
         required: ['id'],
       },
@@ -306,6 +314,16 @@ export class ToolHandlers {
       projectId = project?.id;
     }
 
+    // Resolve parentId if provided (supports truncated IDs)
+    let parentId = input.parentId;
+    if (parentId) {
+      const parentTask = await this.taskService.getById(parentId);
+      if (!parentTask) {
+        throw new Error(`Parent task not found: ${parentId}`);
+      }
+      parentId = parentTask.id;
+    }
+
     const task = await this.taskService.create({
       content: input.content,
       description: input.description,
@@ -314,6 +332,7 @@ export class ToolHandlers {
       due: input.due,
       labels: input.labels,
       context: input.context,
+      parentId,
     });
 
     return this.formatTask(task);
@@ -334,14 +353,31 @@ export class ToolHandlers {
       labelId = label?.id;
     }
 
+    // Resolve parentId if provided (supports truncated IDs)
+    let parentId: string | undefined;
+    if (input.parentId) {
+      const parentTask = await this.taskService.getById(input.parentId);
+      if (!parentTask) {
+        throw new Error(`Parent task not found: ${input.parentId}`);
+      }
+      parentId = parentTask.id;
+    }
+
     const tasks = await this.taskService.list({
       projectId,
       labelId,
       completed: input.completed,
+      parentId,
+      topLevel: input.parentId ? false : (input.topLevel ?? true),
     });
 
     if (tasks.length === 0) {
-      return 'No tasks found.';
+      return input.parentId ? 'No subtasks found.' : 'No tasks found.';
+    }
+
+    // If listing subtasks, show them indented
+    if (input.parentId) {
+      return tasks.map((t) => this.formatTask(t, 1)).join('\n\n');
     }
 
     return tasks.map((t) => this.formatTask(t)).join('\n\n');
@@ -368,6 +404,20 @@ export class ToolHandlers {
       projectId = project?.id;
     }
 
+    // Resolve parentId if provided (supports truncated IDs)
+    let parentId: string | null | undefined;
+    if (input.parentId !== undefined) {
+      if (input.parentId === null) {
+        parentId = null; // Explicitly set to null to make top-level
+      } else {
+        const parentTask = await this.taskService.getById(input.parentId);
+        if (!parentTask) {
+          throw new Error(`Parent task not found: ${input.parentId}`);
+        }
+        parentId = parentTask.id;
+      }
+    }
+
     const task = await this.taskService.update(input.id, {
       content: input.content,
       description: input.description,
@@ -376,6 +426,7 @@ export class ToolHandlers {
       due: input.due,
       labels: input.labels,
       context: input.context,
+      parentId,
     });
 
     return `Updated task:\n${this.formatTask(task)}`;
@@ -518,69 +569,81 @@ export class ToolHandlers {
     return projects.find((p) => p.name.toLowerCase() === nameOrId.toLowerCase());
   }
 
-  private formatTask(task: TaskWithLabels): string {
-    const parts = [`[${task.id.slice(0, 8)}] ${task.content}`];
+  private formatTask(task: TaskWithLabels, indentLevel: number = 0): string {
+    const indent = '  '.repeat(indentLevel);
+    const prefix = indentLevel > 0 ? '└─ ' : '';
+    const parts = [`${indent}${prefix}[${task.id.slice(0, 8)}] ${task.content}`];
 
     if (task.priority > 1) {
-      parts.push(`Priority: P${5 - task.priority}`); // Convert to P1-P4 display
+      parts.push(`${indent}  Priority: P${5 - task.priority}`); // Convert to P1-P4 display
     }
 
     if (task.due_date) {
-      parts.push(`Due: ${task.due_string || task.due_date}`);
+      parts.push(`${indent}  Due: ${task.due_string || task.due_date}`);
     }
 
     if (task.labels.length > 0) {
-      parts.push(`Labels: ${task.labels.map((l) => `@${l.name}`).join(' ')}`);
+      parts.push(`${indent}  Labels: ${task.labels.map((l) => `@${l.name}`).join(' ')}`);
     }
 
     if (task.description) {
-      parts.push(`Description: ${task.description}`);
+      parts.push(`${indent}  Description: ${task.description}`);
+    }
+
+    if (task.parent_id) {
+      parts.push(`${indent}  [subtask]`);
     }
 
     if (task.context) {
-      parts.push('[has context]');
+      parts.push(`${indent}  [has context]`);
     }
 
     if (task.is_completed) {
-      parts.push('(completed)');
+      parts.push(`${indent}  (completed)`);
     }
 
-    return parts.join('\n  ');
+    return parts.join('\n');
   }
 
-  private formatTaskFull(task: TaskWithLabels, updates: TaskStatusUpdate[] = []): string {
-    const parts = [`[${task.id.slice(0, 8)}] ${task.content}`];
+  private formatTaskFull(task: TaskWithLabels, updates: TaskStatusUpdate[] = [], indentLevel: number = 0): string {
+    const indent = '  '.repeat(indentLevel);
+    const prefix = indentLevel > 0 ? '└─ ' : '';
+    const parts = [`${indent}${prefix}[${task.id.slice(0, 8)}] ${task.content}`];
 
     if (task.priority > 1) {
-      parts.push(`Priority: P${5 - task.priority}`);
+      parts.push(`${indent}  Priority: P${5 - task.priority}`);
     }
 
     if (task.due_date) {
-      parts.push(`Due: ${task.due_string || task.due_date}`);
+      parts.push(`${indent}  Due: ${task.due_string || task.due_date}`);
     }
 
     if (task.labels.length > 0) {
-      parts.push(`Labels: ${task.labels.map((l) => `@${l.name}`).join(' ')}`);
+      parts.push(`${indent}  Labels: ${task.labels.map((l) => `@${l.name}`).join(' ')}`);
     }
 
     if (task.description) {
-      parts.push(`Description: ${task.description}`);
+      parts.push(`${indent}  Description: ${task.description}`);
+    }
+
+    if (task.parent_id) {
+      parts.push(`${indent}  Parent: ${task.parent_id.slice(0, 8)}`);
     }
 
     if (task.is_completed) {
-      parts.push('(completed)');
+      parts.push(`${indent}  (completed)`);
     }
 
-    let result = parts.join('\n  ');
+    let result = parts.join('\n');
 
     if (task.context) {
-      result += `\n\nContext:\n${task.context}`;
+      result += `\n\n${indent}Context:\n${task.context}`;
     }
 
     if (updates.length > 0) {
-      result += '\n\nUpdates:';
+      result += `\n\n${indent}Updates:`;
       for (const update of updates) {
-        result += `\n  [${update.created_at}] ${update.content}`;
+        result += `\n${indent}  [${update.created_at}] ${update.content}`;
       }
     }
 
