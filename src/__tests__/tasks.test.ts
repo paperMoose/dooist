@@ -7,6 +7,7 @@ import { ProjectService } from '../services/projects.js';
 import { LabelService } from '../services/labels.js';
 import * as migration from '../db/migrations/001_initial.js';
 import * as migration002 from '../db/migrations/002_add_context.js';
+import * as migration003 from '../db/migrations/003_add_task_updates.js';
 
 let db: Kysely<Database>;
 let taskService: TaskService;
@@ -24,6 +25,7 @@ beforeAll(async () => {
 
   await migration.up(db);
   await migration002.up(db);
+  await migration003.up(db);
 
   // Create inbox project
   inboxId = crypto.randomUUID();
@@ -48,7 +50,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  // Clean up tasks and labels before each test
+  // Clean up tasks, labels, and updates before each test
+  await db.deleteFrom('task_updates').execute();
   await db.deleteFrom('task_labels').execute();
   await db.deleteFrom('tasks').execute();
   await db.deleteFrom('labels').execute();
@@ -237,6 +240,60 @@ describe('TaskService', () => {
 
       expect(upcoming.some(t => t.content === 'Soon task')).toBe(true);
       expect(upcoming.some(t => t.content === 'Later task')).toBe(false);
+    });
+  });
+
+  describe('task updates', () => {
+    it('should add an update to a task', async () => {
+      const task = await taskService.create({ content: 'Task with updates' });
+
+      const update = await taskService.addUpdate(task.id, 'Started investigation');
+
+      expect(update.task_id).toBe(task.id);
+      expect(update.content).toBe('Started investigation');
+      expect(update.created_at).toBeTruthy();
+    });
+
+    it('should get updates in chronological order', async () => {
+      const task = await taskService.create({ content: 'Task with updates' });
+
+      await taskService.addUpdate(task.id, 'First update');
+      await taskService.addUpdate(task.id, 'Second update');
+      await taskService.addUpdate(task.id, 'Third update');
+
+      const updates = await taskService.getUpdates(task.id);
+
+      expect(updates).toHaveLength(3);
+      expect(updates[0].content).toBe('First update');
+      expect(updates[1].content).toBe('Second update');
+      expect(updates[2].content).toBe('Third update');
+    });
+
+    it('should throw when adding update to non-existent task', async () => {
+      await expect(taskService.addUpdate('non-existent-id', 'Update'))
+        .rejects.toThrow('Task not found');
+    });
+
+    it('should throw when getting updates for non-existent task', async () => {
+      await expect(taskService.getUpdates('non-existent-id'))
+        .rejects.toThrow('Task not found');
+    });
+
+    it('should delete updates when task is deleted (cascade)', async () => {
+      const task = await taskService.create({ content: 'Task to delete' });
+      await taskService.addUpdate(task.id, 'Update 1');
+      await taskService.addUpdate(task.id, 'Update 2');
+
+      await taskService.delete(task.id);
+
+      // Verify updates are gone by checking database directly
+      const updates = await db
+        .selectFrom('task_updates')
+        .where('task_id', '=', task.id)
+        .selectAll()
+        .execute();
+
+      expect(updates).toHaveLength(0);
     });
   });
 });

@@ -6,10 +6,12 @@ import { config } from '../config/index.js';
 import type { Database } from '../types/database.js';
 import * as migration001 from './migrations/001_initial.js';
 import * as migration002 from './migrations/002_add_context.js';
+import * as migration003 from './migrations/003_add_task_updates.js';
 
 const migrations: Record<string, Migration> = {
   '001_initial': migration001,
   '002_add_context': migration002,
+  '003_add_task_updates': migration003,
 };
 
 class StaticMigrationProvider implements MigrationProvider {

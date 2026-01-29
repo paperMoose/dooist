@@ -1,5 +1,5 @@
 import type { Kysely } from 'kysely';
-import type { Database, Task, NewTask, TaskUpdate, Label, TaskWithLabels } from '../types/database.js';
+import type { Database, Task, NewTask, TaskUpdate, Label, TaskWithLabels, TaskStatusUpdate } from '../types/database.js';
 import { parseDueString, getTodayDate, getDateInDays } from './dates.js';
 import { LabelService } from './labels.js';
 
@@ -382,6 +382,47 @@ export class TaskService {
     await this.db
       .insertInto('task_labels')
       .values(labels.map((label) => ({ task_id: taskId, label_id: label.id })))
+      .execute();
+  }
+
+  async addUpdate(taskId: string, content: string): Promise<TaskStatusUpdate> {
+    const task = await this.getById(taskId);
+    if (!task) {
+      throw new Error('Task not found');
+    }
+
+    const updateId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await this.db
+      .insertInto('task_updates')
+      .values({
+        id: updateId,
+        task_id: task.id,
+        content,
+        created_at: now,
+      })
+      .execute();
+
+    return {
+      id: updateId,
+      task_id: task.id,
+      content,
+      created_at: now,
+    };
+  }
+
+  async getUpdates(taskId: string): Promise<TaskStatusUpdate[]> {
+    const task = await this.getById(taskId);
+    if (!task) {
+      throw new Error('Task not found');
+    }
+
+    return this.db
+      .selectFrom('task_updates')
+      .where('task_id', '=', task.id)
+      .selectAll()
+      .orderBy('created_at', 'asc')
       .execute();
   }
 }

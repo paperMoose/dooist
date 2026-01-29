@@ -17,18 +17,20 @@ Create tasks for:
 - Anything the user says to remind them about
 
 ## How to Create Good Tasks
-Always include `context` with:
-- Which repo/project this relates to
-- The intent (why this matters)
-- What "done" looks like
-- Relevant file paths, decisions, or code snippets
+Context is tokens. Use the minimum needed for a cold agent to pick up the task and execute without asking questions. No prose, no filler — just the facts it needs.
+
+Include in `context`:
+- Repo/project
+- Intent (one line — why this matters)
+- Done state (how to verify it's finished)
+- Key file paths or decisions
 
 Example:
 ```
 create_task "Fix auth redirect bug" with context:
   Repo: paperMoose/dooist
-  Intent: Users hitting /today without auth get a blank page instead of redirect
-  Done when: Unauthenticated users redirect to /login
+  Intent: Unauthenticated /today shows blank page instead of redirect
+  Done: /today without auth → 302 to /login
   Files: web/src/middleware.ts, web/src/lib/supabase/middleware.ts
 ```
 

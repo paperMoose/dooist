@@ -58,12 +58,20 @@ export interface SectionTable {
   updated_at: Generated<string>;
 }
 
+export interface TaskUpdateTable {
+  id: Generated<string>;
+  task_id: string;
+  content: string;
+  created_at: Generated<string>;
+}
+
 export interface Database {
   projects: ProjectTable;
   tasks: TaskTable;
   labels: LabelTable;
   task_labels: TaskLabelTable;
   sections: SectionTable;
+  task_updates: TaskUpdateTable;
 }
 
 // Utility types for each table
@@ -85,6 +93,9 @@ export type NewTaskLabel = Insertable<TaskLabelTable>;
 export type Section = Selectable<SectionTable>;
 export type NewSection = Insertable<SectionTable>;
 export type SectionUpdate = Updateable<SectionTable>;
+
+export type TaskStatusUpdate = Selectable<TaskUpdateTable>;
+export type NewTaskStatusUpdate = Insertable<TaskUpdateTable>;
 
 // Application-level types (with boolean conversion)
 export interface TaskWithLabels extends Task {

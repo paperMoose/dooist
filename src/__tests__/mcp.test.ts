@@ -5,6 +5,7 @@ import type { Database } from '../types/database.js';
 import { ToolHandlers, getToolDefinitions } from '../mcp/tools.js';
 import * as migration from '../db/migrations/001_initial.js';
 import * as migration002 from '../db/migrations/002_add_context.js';
+import * as migration003 from '../db/migrations/003_add_task_updates.js';
 
 let db: Kysely<Database>;
 let handlers: ToolHandlers;
@@ -20,6 +21,7 @@ beforeAll(async () => {
 
   await migration.up(db);
   await migration002.up(db);
+  await migration003.up(db);
 
   // Create inbox project
   inboxId = crypto.randomUUID();
@@ -42,10 +44,11 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  await db.deleteFrom('task_updates').execute();
   await db.deleteFrom('task_labels').execute();
   await db.deleteFrom('tasks').execute();
   await db.deleteFrom('labels').execute();
-  // Keep projects - just clean tasks/labels
+  // Keep projects - just clean tasks/labels/updates
 });
 
 describe('MCP Tool Definitions', () => {
@@ -690,6 +693,40 @@ describe('MCP Tool Handlers', () => {
       expect(result).toContain('[has context]');
       expect(result).not.toContain('## Intent');
       expect(result).not.toContain('This should not appear in list');
+    });
+  });
+
+  describe('add_task_update', () => {
+    it('should add an update to a task', async () => {
+      await handlers.handleTool('create_task', { content: 'Task for updates' });
+      const taskId = await getLastCreatedTaskId();
+
+      const result = await handlers.handleTool('add_task_update', {
+        id: taskId,
+        update: 'Started investigation',
+      });
+
+      expect(result).toContain('Added update at');
+      expect(result).toContain('Started investigation');
+    });
+
+    it('should show updates in get_task output', async () => {
+      await handlers.handleTool('create_task', { content: 'Task with timeline' });
+      const taskId = await getLastCreatedTaskId();
+
+      await handlers.handleTool('add_task_update', { id: taskId, update: 'First update' });
+      await handlers.handleTool('add_task_update', { id: taskId, update: 'Second update' });
+
+      const result = await handlers.handleTool('get_task', { id: taskId });
+
+      expect(result).toContain('Updates:');
+      expect(result).toContain('First update');
+      expect(result).toContain('Second update');
+    });
+
+    it('should throw when adding update to non-existent task', async () => {
+      await expect(handlers.handleTool('add_task_update', { id: 'non-existent', update: 'test' }))
+        .rejects.toThrow('Task not found');
     });
   });
 

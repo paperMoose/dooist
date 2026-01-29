@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Kysely } from 'kysely';
-import type { Database, TaskWithLabels, Project, Label } from '../types/database.js';
+import type { Database, TaskWithLabels, Project, Label, TaskStatusUpdate } from '../types/database.js';
 import { TaskService } from '../services/tasks.js';
 import { ProjectService } from '../services/projects.js';
 import { LabelService } from '../services/labels.js';
@@ -60,6 +60,11 @@ export const scanTodosSchema = z.object({
   directory: z.string().optional().describe('Directory to scan (defaults to current working directory)'),
   createTasks: z.boolean().optional().default(false).describe('Create tasks from found TODOs'),
   project: z.string().optional().describe('Project for created tasks (defaults to Inbox)'),
+});
+
+export const addTaskUpdateSchema = z.object({
+  id: z.string().describe('The task ID'),
+  update: z.string().describe('The status update content'),
 });
 
 // Tool definitions
@@ -226,6 +231,18 @@ export function getToolDefinitions() {
         },
       },
     },
+    {
+      name: 'add_task_update',
+      description: 'Add a timestamped status update to a task. Use this to track progress and activity on a task over time.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {
+          id: { type: 'string', description: 'The task ID' },
+          update: { type: 'string', description: 'The status update content' },
+        },
+        required: ['id', 'update'],
+      },
+    },
   ];
 }
 
@@ -273,6 +290,8 @@ export class ToolHandlers {
         return this.createLabel(args);
       case 'scan_todos':
         return this.scanTodos(args);
+      case 'add_task_update':
+        return this.addTaskUpdate(args);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -368,7 +387,8 @@ export class ToolHandlers {
     if (!task) {
       throw new Error('Task not found');
     }
-    return this.formatTaskFull(task);
+    const updates = await this.taskService.getUpdates(task.id);
+    return this.formatTaskFull(task, updates);
   }
 
   private async deleteTask(args: Record<string, unknown>): Promise<string> {
@@ -467,6 +487,12 @@ export class ToolHandlers {
     return `Found ${todos.length} TODOs:\n\n${this.formatTodoList(grouped)}`;
   }
 
+  private async addTaskUpdate(args: Record<string, unknown>): Promise<string> {
+    const input = addTaskUpdateSchema.parse(args);
+    const update = await this.taskService.addUpdate(input.id, input.update);
+    return `Added update at ${update.created_at}:\n${update.content}`;
+  }
+
   private formatTodoList(grouped: Record<string, FoundTodo[]>): string {
     const parts: string[] = [];
 
@@ -522,7 +548,7 @@ export class ToolHandlers {
     return parts.join('\n  ');
   }
 
-  private formatTaskFull(task: TaskWithLabels): string {
+  private formatTaskFull(task: TaskWithLabels, updates: TaskStatusUpdate[] = []): string {
     const parts = [`[${task.id.slice(0, 8)}] ${task.content}`];
 
     if (task.priority > 1) {
@@ -549,6 +575,13 @@ export class ToolHandlers {
 
     if (task.context) {
       result += `\n\nContext:\n${task.context}`;
+    }
+
+    if (updates.length > 0) {
+      result += '\n\nUpdates:';
+      for (const update of updates) {
+        result += `\n  [${update.created_at}] ${update.content}`;
+      }
     }
 
     return result;
